@@ -36,7 +36,7 @@ HTML = """<div id="gx-wrap" style="box-sizing:border-box;max-width:100%;position
 <canvas id="gx" style="width:100%;height:520px;border-radius:12px;display:block;background:#010103"></canvas>
 <div style="display:flex;gap:8px;margin:10px 0;align-items:center;flex-wrap:wrap">
 <input id="gxs" placeholder="Search 140 emotions..." style="flex:1;min-width:180px;padding:8px;border-radius:8px;border:1px solid var(--hatch-widget-border);background:var(--hatch-widget-surface);color:var(--hatch-widget-text);box-sizing:border-box">
-<button id="gxstorm" title="Ion storm frustration" style="padding:8px 10px;border-radius:8px;border:1px solid var(--hatch-widget-accent);background:transparent;cursor:pointer;font-size:14px">&#9889;</button><button id="gxflare" title="Solar flare joy" style="padding:8px 10px;border-radius:8px;border:1px solid var(--hatch-widget-accent);background:transparent;cursor:pointer;font-size:14px">&#9728;&#65039;</button><button id="gxsn" title="Supernova delight" style="padding:8px 10px;border-radius:8px;border:1px solid var(--hatch-widget-accent);background:transparent;cursor:pointer;font-size:14px">&#128165;</button><button id="gxorbs" title="Toggle lightning orb glow" style="padding:8px 10px;border-radius:8px;border:1px solid var(--hatch-widget-border);background:transparent;color:var(--hatch-widget-text);cursor:pointer;font-size:11px;white-space:nowrap">Orbs: OFF</button><button id="gxdrift" style="padding:8px 14px;border-radius:8px;border:1px solid var(--hatch-widget-accent);background:transparent;color:var(--hatch-widget-accent);cursor:pointer;white-space:nowrap">Drift: ON</button>
+<button id="gxstorm" title="Ion storm frustration" style="padding:8px 10px;border-radius:8px;border:1px solid var(--hatch-widget-accent);background:transparent;cursor:pointer;font-size:14px">&#9889;</button><button id="gxflare" title="Solar flare joy" style="padding:8px 10px;border-radius:8px;border:1px solid var(--hatch-widget-accent);background:transparent;cursor:pointer;font-size:14px">&#9728;&#65039;</button><button id="gxsn" title="Supernova delight" style="padding:8px 10px;border-radius:8px;border:1px solid var(--hatch-widget-accent);background:transparent;cursor:pointer;font-size:14px">&#128165;</button><div id="gxtoggles" style="display:flex;gap:4px;flex-wrap:wrap;margin:4px 0"></div><button id="gxorbs" title="Toggle lightning orb glow" style="padding:8px 10px;border-radius:8px;border:1px solid var(--hatch-widget-border);background:transparent;color:var(--hatch-widget-text);cursor:pointer;font-size:11px;white-space:nowrap">Orbs: OFF</button><button id="gxdrift" style="padding:8px 14px;border-radius:8px;border:1px solid var(--hatch-widget-accent);background:transparent;color:var(--hatch-widget-accent);cursor:pointer;white-space:nowrap">Drift: ON</button>
 </div>
 <div id="gxcur" style="font-size:14px;margin-bottom:6px;min-height:22px;color:var(--hatch-widget-text)"></div>
 <div id="gxlist" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;max-width:100%"></div>
@@ -58,6 +58,31 @@ function getTheme(name){
   if(/aurora|rainbow|prism/.test(n))return "aurora";
   if(/nebula|cosmic|star|galaxy|quasar|nova/.test(n))return "nebula";
   return null;
+}
+
+/* ============ ELEMENTAL MAPPING: elements attach to feelings ============ */
+var EL={fire:0,lightning:0,wind:0,smoke:0,sun:0,sparkle:0,snow:0,flare:0,supernova:0};
+function computeElementTargets(){
+  var n=String(cur.name||"").toLowerCase(),t={};
+  var angerFull=/anger|rage|fury|wrath|outrage/.test(n);
+  var angerMild=/irritat|annoy|frustrat|resent|bitter|hostil|livid/.test(n);
+  t.fire=angerFull?0.5+cur.i*0.5:(angerMild?0.25+cur.i*0.35:Math.max(0,-cur.v-0.5)*cur.i*0.8);
+  var elec=/electric|ion|thunder|lightning|storm|tempest|shock|static|surge/.test(n);
+  t.lightning=elec?0.4+cur.tb*0.6:Math.max(0,cur.tb-0.62)*2.5;
+  var calm=/tranquil|calm|serene|peace|still|gentle|mellow|relax|hush|lull/.test(n);
+  t.wind=calm?0.4+(1-cur.tb)*0.4:Math.max(0,0.35-cur.tb)*(cur.v>0?0.4:0.15);
+  t.smoke=Math.max(0,0.6-cur.l)*1.3;
+  t.sun=Math.max(0,cur.v-0.35)*Math.max(0,cur.tp-0.35)*3.0;
+  t.sparkle=Math.max(0,cur.v-0.45)*Math.max(0,cur.l-0.55)*3.5;
+  t.snow=Math.max(0,-cur.v-0.12)*1.6;
+  t.flare=/solar|sun/.test(n)?0.5+cur.i*0.5:0;
+  t.supernova=/supernova/.test(n)?1:0;
+  for(var k in t)t[k]=Math.max(0,Math.min(1,t[k]));
+  return t;
+}
+function updateElements2(){
+  var tgt2=computeElementTargets();
+  for(var k in EL)EL[k]+=(tgt2[k]-EL[k])*0.03;
 }
 
 /* ================= WEBGL ================= */
@@ -182,7 +207,228 @@ var FS_L=[
 
 var prP=prog(VS_P,FS_P,"points");
 var prB=prog(VS_B,FS_B,"billboard");
+/* Planet shader - procedural spheres with detail, terminator, rings */
+var VS_PL=[
+"attribute vec3 aCenter;",
+"attribute vec2 aCorner;",
+"attribute float aRadius;",
+"attribute float aType;",
+"attribute float aSeed;",
+"uniform mat4 uProj;",
+"uniform mat4 uView;",
+"varying vec2 vP;",
+"varying float vType;",
+"varying float vSeed;",
+"uniform float uTime;",
+"void main(){",
+"  vP=aCorner; vType=aType; vSeed=aSeed;",
+"  vec4 vc=uView*vec4(aCenter,1.0);",
+"  vc.xy+=aCorner*aRadius*2.2;",
+"  gl_Position=uProj*vc;",
+"}"
+].join("\\n");
+var FS_PL=[
+"precision highp float;",
+"varying vec2 vP;",
+"varying float vType;",
+"varying float vSeed;",
+"uniform float uTime;",
+"float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }",
+"float vnoise(vec2 p){",
+"  vec2 i=floor(p), f=fract(p);",
+"  vec2 u=f*f*(3.0-2.0*f);",
+"  return mix(mix(hash(i),hash(i+vec2(1,0)),u.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x), u.y);",
+"}",
+"float fbm(vec2 p){",
+"  float v=0.0, a=0.5;",
+"  for(int i=0;i<4;i++){ v+=a*vnoise(p); p*=2.03; a*=0.5; }",
+"  return v;",
+"}",
+"void main(){",
+"  vec2 p=vP*2.2;",
+"  float r=length(p);",
+"  vec3 L=normalize(vec3(0.55,0.45,0.72));",
+"  float s=vSeed;",
+"  vec2 sp=p*3.0+s*17.0;",
+"  float continents=fbm(sp+fbm(sp*1.7+s*5.0));",
+"  float detail=fbm(sp*3.1+s*29.0);",
+"  float micro=vnoise(sp*9.0+s*43.0);",
+"  vec3 base; vec3 atmo; float spec=0.0;",
+"  if(vType<0.5){",
+"    float b1=sin(p.y*10.0+s*12.0+uTime*0.06+fbm(sp*0.8)*3.0);",
+"    float b2=sin(p.y*22.0-s*8.0+detail*2.0);",
+"    base=mix(vec3(0.62,0.36,0.18),vec3(1.0,0.88,0.68),smoothstep(-0.7,0.7,b1));",
+"    base=mix(base,vec3(0.85,0.55,0.30),smoothstep(0.1,0.9,b2)*0.5);",
+"    float storm=smoothstep(0.72,0.95,fbm(sp*1.2+vec2(3.0,7.0)+uTime*0.03));",
+"    base=mix(base,vec3(0.95,0.75,0.55),storm*0.7);",
+"    base*=0.85+0.3*detail;",
+"    atmo=vec3(0.9,0.7,0.5);",
+"  } else if(vType<1.5){",
+"    float land=smoothstep(0.42,0.58,continents);",
+"    base=mix(vec3(0.30,0.18,0.12),vec3(0.72,0.42,0.22),land);",
+"    base=mix(base,vec3(0.55,0.35,0.18),smoothstep(0.3,0.7,detail)*0.6);",
+"    float cr=smoothstep(0.78,0.95,vnoise(sp*14.0+s*51.0));",
+"    base*=1.0-cr*0.4;",
+"    base+=vec3(0.05,0.03,0.02)*micro;",
+"    float cap=smoothstep(0.55,0.8,p.y+s*0.15)+smoothstep(0.55,0.8,-p.y-s*0.15);",
+"    base=mix(base,vec3(0.92,0.90,0.86),clamp(cap,0.0,1.0)*0.85);",
+"    atmo=vec3(0.75,0.45,0.28);",
+"  } else if(vType<2.5){",
+"    float cracks=smoothstep(0.68,0.92,abs(continents-0.5)*2.0);",
+"    base=mix(vec3(0.72,0.82,0.92),vec3(0.50,0.64,0.82),smoothstep(0.3,0.7,detail));",
+"    base=mix(base,vec3(0.30,0.45,0.65),cracks*0.7);",
+"    base+=vec3(0.08,0.10,0.12)*micro;",
+"    spec=0.6;",
+"    atmo=vec3(0.55,0.72,0.95);",
+"  } else if(vType<3.5){",
+"    float crust=smoothstep(0.35,0.65,continents);",
+"    base=mix(vec3(0.10,0.06,0.06),vec3(0.28,0.14,0.08),crust);",
+"    float lava=smoothstep(0.55,0.75,abs(detail-0.5)*2.2);",
+"    base=mix(base,vec3(1.3,0.45,0.06),lava);",
+"    base+=vec3(1.2,0.5,0.1)*smoothstep(0.75,0.95,lava)*1.2;",
+"    base*=0.9+0.2*micro;",
+"    atmo=vec3(1.0,0.35,0.08);",
+"  } else {",
+"    float b1=sin(p.y*8.0+s*10.0+fbm(sp*0.7)*2.5);",
+"    base=mix(vec3(0.78,0.68,0.48),vec3(0.94,0.86,0.70),smoothstep(-0.6,0.6,b1));",
+"    float b2=sin(p.y*18.0-s*6.0+detail*1.5);",
+"    base=mix(base,vec3(0.66,0.56,0.38),smoothstep(0.2,0.9,b2)*0.45);",
+"    base*=0.88+0.24*detail;",
+"    atmo=vec3(0.9,0.8,0.6);",
+"  }",
+"  vec3 col; float alpha=1.0; bool isRing=false; vec3 ringCol=vec3(0.0); float ringA=0.0;",
+"  if(vType>3.5){",
+"    vec2 rp=vec2(p.x,p.y*3.4);",
+"    float rr=length(rp);",
+"    float inRing=step(1.08,rr)*step(rr,2.0);",
+"    float ringBands=0.55+0.45*vnoise(vec2(rr*22.0,s*10.0));",
+"    float cassini=smoothstep(0.03,0.09,abs(rr-1.55));",
+"    ringCol=vec3(0.88,0.80,0.64)*ringBands*(0.35+0.65*cassini);",
+"    float front=p.y<0.12?1.0:0.0;",
+"    if(r>1.0){ ringA=inRing*0.92; isRing=true; }",
+"    else if(inRing>0.5&&front>0.5){ ringA=0.88; isRing=true; }",
+"  }",
+"  if(isRing){",
+"    float rdiff=max(dot(vec3(0.0,0.0,1.0),L),0.0);",
+"    col=ringCol*(0.30+0.70*rdiff);",
+"    alpha=ringA;",
+"  } else {",
+"    if(r>1.0) discard;",
+"    vec3 n=vec3(p.x,p.y,sqrt(max(0.0,1.0-r*r)));",
+"    float dl=max(dot(n,L),0.0);",
+"    float term=smoothstep(-0.12,0.28,dl);",
+"    col=base*(0.02+0.98*pow(term,1.3));",
+"    vec3 V=vec3(0.0,0.0,1.0);",
+"    vec3 H=normalize(L+V);",
+"    col+=vec3(1.0,0.98,0.95)*pow(max(dot(n,H),0.0),24.0)*spec*term;",
+"    float rim=pow(1.0-r,2.8);",
+"    col+=atmo*rim*(0.15+0.55*term);",
+"    float limb=pow(1.0-r,0.7);",
+"    col=mix(col, atmo*0.25, limb*0.35*(1.0-term));",
+"  }",
+"  gl_FragColor=vec4(col,alpha);",
+"}"
+].join("\\n");
+var prPL=prog(VS_PL,FS_PL,"planets");
+/* Sparkle shader - 4-pointed star flares */
+var VS_SP=[
+"attribute vec3 aCenter;",
+"attribute vec2 aCorner;",
+"attribute float aRadius;",
+"attribute float aSeed;",
+"attribute float aBright;",
+"uniform mat4 uProj;",
+"uniform mat4 uView;",
+"uniform float uTime;",
+"varying vec2 vP;",
+"varying float vSeed;",
+"varying float vBright;",
+"void main(){",
+"  vP=aCorner; vSeed=aSeed; vBright=aBright;",
+"  float tw=0.7+0.5*sin(uTime*2.2+aSeed*40.0);",
+"  vec4 vc=uView*vec4(aCenter,1.0);",
+"  vc.xy+=aCorner*aRadius*tw;",
+"  gl_Position=uProj*vc;",
+"}"
+].join("\\n");
+var FS_SP=[
+"precision highp float;",
+"varying vec2 vP;",
+"varying float vSeed;",
+"varying float vBright;",
+"void main(){",
+"  vec2 p=vP;",
+"  float hx=smoothstep(0.10,0.0,abs(p.y))*smoothstep(1.0,0.15,abs(p.x));",
+"  float vy=smoothstep(0.10,0.0,abs(p.x))*smoothstep(1.0,0.15,abs(p.y));",
+"  float core=smoothstep(0.35,0.0,length(p));",
+"  float star=hx+vy+core*1.2;",
+"  if(star<0.01) discard;",
+"  vec3 tint=mix(vec3(1.0,0.95,0.85),vec3(0.75,0.85,1.0),fract(vSeed*7.0));",
+"  gl_FragColor=vec4(tint*star*vBright, star*vBright*0.85);",
+"}"
+].join("\\n");
+var prSP=prog(VS_SP,FS_SP,"sparkles");
+/* Shock bubble shader - iridescent expanding sphere */
+var VS_SH=[
+"attribute vec3 aCenter;",
+"attribute vec2 aCorner;",
+"attribute float aRadius;",
+"uniform mat4 uProj;",
+"uniform mat4 uView;",
+"varying vec2 vP;",
+"void main(){",
+"  vP=aCorner;",
+"  vec4 vc=uView*vec4(aCenter,1.0);",
+"  vc.xy+=aCorner*aRadius;",
+"  gl_Position=uProj*vc;",
+"}"
+].join("\\n");
+var FS_SH=[
+"precision highp float;",
+"varying vec2 vP;",
+"uniform float uTime;",
+"void main(){",
+"  vec2 p=vP;",
+"  float r=length(p);",
+"  if(r>1.0) discard;",
+"  vec3 n=vec3(p.x,p.y,sqrt(max(0.0,1.0-r*r)));",
+"  float fres=pow(1.0-max(dot(n,vec3(0.0,0.0,1.0)),0.0),2.0);",
+"  float band=sin((r*8.0-uTime*2.0)+sin(atan(p.y,p.x)*3.0)*1.5);",
+"  vec3 rainbow=mix(vec3(1.0,0.3,0.8),vec3(0.3,0.8,1.0),smoothstep(-1.0,1.0,band));",
+"  rainbow=mix(rainbow,vec3(0.4,1.0,0.6),smoothstep(0.0,1.0,sin(band*2.0))*0.5);",
+"  float alpha=fres*0.85+smoothstep(0.9,1.0,r)*0.3;",
+"  vec3 col=rainbow*(0.4+fres*1.2)+vec3(0.9,0.95,1.0)*pow(fres,3.0)*0.8;",
+"  // faint inner glow",
+"  col+=vec3(0.5,0.7,1.0)*smoothstep(0.5,0.0,r)*0.15;",
+"  gl_FragColor=vec4(col,alpha);",
+"}"
+].join("\\n");
+var prSH=prog(VS_SH,FS_SH,"shockbubble");
 var prL=prog(VS_L,FS_L,"lines");
+/* Ribbon shader (GTA V style lightning - camera-facing quads) */
+var VS_R=[
+"attribute vec3 aPos;",
+"attribute vec3 aCol;",
+"attribute vec2 aUV;",
+"uniform mat4 uProj;",
+"uniform mat4 uView;",
+"varying vec3 vCol;",
+"varying vec2 vUV;",
+"void main(){vCol=aCol;vUV=aUV;gl_Position=uProj*uView*vec4(aPos,1.0);}"
+].join("\\n");
+var FS_R=[
+"precision highp float;",
+"varying vec3 vCol;",
+"varying vec2 vUV;",
+"void main(){",
+"  float d=abs(vUV.y-0.5)*2.0;",
+"  float core=pow(max(0.0,1.0-d),2.2);",
+"  float glow=pow(max(0.0,1.0-d),0.7)*0.35;",
+"  float a=core+glow;",
+"  gl_FragColor=vec4(vCol*a,a);",
+"}"
+].join("\\n");
+var prR=prog(VS_R,FS_R,"ribbons");
 
 /* Matrices */
 function persp(fovy,asp,n,f){
@@ -215,6 +461,7 @@ function attr(p,buf,name,sz){
 /* ================= STATE ================= */
 var cur={v:-0.6,i:0.8,tb:0.7,l:0.5,tp:0.4,g:0.5,hue:"storm-teal",name:"ion storm frustration",theme:"storm"};
 var lightningOrbs=false;
+var show={stars:true,elements:true,dust:true,clouds:true,planets:true,lightning:true,rays:true,smoke:true,snow:true,sparkle:true,shock:true,fg:true};
 var tgt=JSON.parse(JSON.stringify(cur));
 var drifting=true,driftTimer=null,flashA=0;
 var gSpread=10;
@@ -252,14 +499,14 @@ function updateStars(time){
     var x=Math.cos(ang)*rr;
     var z=Math.sin(ang)*rr*0.8-4;
     var y=b.y*spread*0.3*ySq+Math.sin(time*0.7+b.sd*6.28)*cur.tb*1.8;
-    if(th==="fire"||th==="magma")y+=Math.sin(time*2+b.sd*6.28)*1.2+(1-b.r)*3*cur.i;
+    if(EL.fire>0.02)y+=Math.sin(time*2+b.sd*6.28)*1.2*EL.fire+(1-b.r)*3*cur.i*EL.fire;
     sPos[k*3]=x;sPos[k*3+1]=y;sPos[k*3+2]=z;
     var coreF=1-b.r;
     var cr=Math.min(1,base[0]*(0.3+coreF)*bright);
     var cg=Math.min(1,base[1]*(0.3+coreF)*bright);
     var cb=Math.min(1,base[2]*(0.3+coreF)*bright);
     if(cur.v<0){cr=Math.min(1,cr+(-cur.v)*0.25);cb=Math.min(1,cb+(-cur.v)*0.12);}
-    if(th==="fire"||th==="magma"){
+    if(EL.fire>0.02){
       var fm=0.75;
       cr=cr*(1-fm)+Math.min(1,0.6+coreF*0.9)*fm;
       cg=cg*(1-fm)+Math.min(1,0.25+coreF*0.35)*fm;
@@ -297,37 +544,38 @@ for(var ei=0;ei<NE;ei++){
 }
 var eBuf=gl.createBuffer(),eColBuf=gl.createBuffer(),eSizeBuf=gl.createBuffer(),eSeedBuf=gl.createBuffer();
 /* ---- Snow: cold particle buildup for sadness ---- */
-var NSW2=450;
+var NSW2=800;
 var snPos=new Float32Array(NSW2*3),snCol=new Float32Array(NSW2*3),snSize=new Float32Array(NSW2),snSeed=new Float32Array(NSW2);
 var snBase=[];
 for(var sni=0;sni<NSW2;sni++){
   snBase.push({x:(Math.random()-0.5)*2,y:Math.random(),z:(Math.random()-0.5)*2,
-    sp:0.3+Math.random()*0.7,ph:Math.random()*6.28,sd:Math.random(),sz:0.7+Math.random()*1.8});
+    sp:0.3+Math.random()*0.7,ph:Math.random()*6.28,sd:Math.random(),sz:2.2+Math.random()*3.2});
   snSeed[sni]=snBase[sni].sd;
 }
 var snBuf=gl.createBuffer(),snColB=gl.createBuffer(),snSizeB=gl.createBuffer(),snSdB=gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER,snSdB);gl.bufferData(gl.ARRAY_BUFFER,snSeed,gl.STATIC_DRAW);
 function updateSnow(time){
   var spread=gSpread;
-  var snowA=Math.max(0,(-cur.v-0.1))*1.8;
-  snowA=Math.min(1,snowA);
+  var snowA=EL.snow;
   for(var k=0;k<NSW2;k++){
     var b=snBase[k];
     if(snowA<0.02){snPos[k*3+1]=-100;snCol[k*3]=snCol[k*3+1]=snCol[k*3+2]=0;snSize[k]=0.01;continue;}
     // Slow fall with sway, swirl buildup near bottom
     b.y-=0.0035*b.sp*(0.4+snowA);
     if(b.y<-0.9){b.y=0.9;b.x=(Math.random()-0.5)*2;b.z=(Math.random()-0.5)*2;}
-    var sway=Math.sin(time*1.2+b.ph)*0.15;
-    // Gentle vortex accumulation
-    var ang=Math.atan2(b.z,b.x)+0.002*(0.5+snowA);
+    // Flutter: snowflakes wobble as they fall
+    var flutter=Math.sin(time*2.2+b.ph*3.0)*0.35+Math.sin(time*3.7+b.ph)*0.15;
+    var sway=Math.sin(time*0.9+b.ph)*0.5+flutter;
+    // Swirl: vortex motion
+    var ang=Math.atan2(b.z,b.x)+0.006*(0.5+snowA)+Math.sin(time*0.5+b.ph)*0.01;
     var rad=Math.hypot(b.x,b.z);
     rad=Math.max(0.15,rad-0.0008*snowA);
     var x=Math.cos(ang)*rad*spread*0.8+sway;
-    var z=Math.sin(ang)*rad*spread*0.7-4;
+    var z=Math.sin(ang)*rad*spread*0.7-4+Math.cos(time*0.7+b.ph)*0.3;
     var y=b.y*spread*0.55;
     snPos[k*3]=x;snPos[k*3+1]=y;snPos[k*3+2]=z;
     var tw2=0.6+0.4*Math.sin(time*2+b.ph*3);
-    snCol[k*3]=0.82*tw2*snowA;snCol[k*3+1]=0.88*tw2*snowA;snCol[k*3+2]=1.0*tw2*snowA;
+    snCol[k*3]=1.4*tw2*snowA;snCol[k*3+1]=1.5*tw2*snowA;snCol[k*3+2]=1.8*tw2*snowA;
     snSize[k]=b.sz;
   }
   gl.bindBuffer(gl.ARRAY_BUFFER,snBuf);gl.bufferData(gl.ARRAY_BUFFER,snPos,gl.DYNAMIC_DRAW);
@@ -340,7 +588,7 @@ function updateElements(time){
   var th=cur.theme,spread=gSpread;
   for(var k=0;k<NE;k++){
     var b=eBase[k],x=0,y=-100,z=0,cr=0,cg=0,cb=0;
-    if(th==="fire"||th==="magma"){
+    if(EL.fire>0.02){
       b.a+=0.045*b.sp*(1+cur.i*1.5);
       b.y+=0.008*b.sp*(0.5+cur.i);
       if(b.y>1)b.y=-1;
@@ -349,7 +597,7 @@ function updateElements(time){
       z=Math.sin(b.a)*r*0.8-4+Math.cos(time*6+b.sd*25)*0.5*cur.i;
       y=b.y*spread*0.5;
       var heat=1-Math.abs(b.y);
-      cr=1.0;cg=0.25+heat*0.45;cb=0.05+heat*0.1;
+      cr=1.0*EL.fire;cg=(0.25+heat*0.45)*EL.fire;cb=(0.05+heat*0.1)*EL.fire;
     }else if(th==="ice"){
       b.a+=0.004*b.sp;
       var r2=(0.3+b.r*0.7)*spread*0.8;
@@ -421,27 +669,26 @@ for(var di=0;di<ND;di++){
   dSize[di]=0.8+Math.random()*1.6;dSeed[di]=Math.random();
 }
 /* ---- Smoke: lifelike wisps ---- */
-var NSM=600;
+var NSM=900;
 var smPos=new Float32Array(NSM*3),smCol=new Float32Array(NSM*3),smSize=new Float32Array(NSM),smSeed=new Float32Array(NSM);
 var smBase=[];
 for(var smi=0;smi<NSM;smi++){
   smBase.push({a:Math.random()*6.283,r:0.2+Math.random()*0.8,y:Math.random(),
-    sp:0.2+Math.random()*0.5,ph:Math.random()*6.28,sd:Math.random(),sz:3+Math.random()*5,life:Math.random()});
+    sp:0.2+Math.random()*0.5,ph:Math.random()*6.28,sd:Math.random(),sz:5+Math.random()*8,life:Math.random()});
   smSeed[smi]=smBase[smi].sd;
 }
 var smBuf=gl.createBuffer(),smColB=gl.createBuffer(),smSizeB=gl.createBuffer(),smSdB=gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER,smSdB);gl.bufferData(gl.ARRAY_BUFFER,smSeed,gl.STATIC_DRAW);
 function updateSmoke(time){
   var spread=gSpread;
-  var smokeA=Math.max(0,(0.62-cur.l))*1.4+cur.tb*0.25;
-  smokeA=Math.min(1,smokeA);
+  var smokeA=EL.smoke;
   for(var k=0;k<NSM;k++){
     var b=smBase[k];
     if(smokeA<0.03){smPos[k*3+1]=-100;smCol[k*3]=smCol[k*3+1]=smCol[k*3+2]=0;smSize[k]=0.01;continue;}
     // Rise + curl: lifelike wisp motion
-    b.life+=0.004*b.sp*(0.5+cur.tb);
+    b.life+=0.0022*b.sp*(0.5+cur.tb*0.5);
     if(b.life>1){b.life=0;b.a=Math.random()*6.283;b.r=0.2+Math.random()*0.6;}
-    b.a+=0.006*(0.5+cur.tb);
+    b.a+=0.003*(0.5+cur.tb*0.5);
     var r=b.r*spread*(0.5+b.life*0.7);
     var curl=Math.sin(time*0.8+b.ph+b.life*5)*0.8;
     var x=Math.cos(b.a)*r+curl;
@@ -450,8 +697,9 @@ function updateSmoke(time){
     smPos[k*3]=x;smPos[k*3+1]=y;smPos[k*3+2]=z;
     var fade=Math.sin(b.life*Math.PI);
     var g=0.32+0.1*Math.sin(time+b.ph);
-    smCol[k*3]=g*0.9*smokeA*fade;smCol[k*3+1]=g*0.95*smokeA*fade;smCol[k*3+2]=g*1.1*smokeA*fade;
-    smSize[k]=b.sz*(0.7+b.life*0.9);
+    smCol[k*3]=g*1.6*smokeA*fade;smCol[k*3+1]=g*1.7*smokeA*fade;smCol[k*3+2]=g*2.0*smokeA*fade;
+    var breathe=1+0.18*Math.sin(time*0.9+b.ph*2.0);
+    smSize[k]=b.sz*(0.7+b.life*0.9)*breathe;
   }
   gl.bindBuffer(gl.ARRAY_BUFFER,smBuf);gl.bufferData(gl.ARRAY_BUFFER,smPos,gl.DYNAMIC_DRAW);
   gl.bindBuffer(gl.ARRAY_BUFFER,smColB);gl.bufferData(gl.ARRAY_BUFFER,smCol,gl.DYNAMIC_DRAW);
@@ -467,13 +715,16 @@ gl.bindBuffer(gl.ARRAY_BUFFER,dSeedB);gl.bufferData(gl.ARRAY_BUFFER,dSeed,gl.STA
 var NB=96;
 var bCX=new Float32Array(NB*6*3),bCC=new Float32Array(NB*6*3),bRD=new Float32Array(NB*6),
     bAL=new Float32Array(NB*6),bCOR=new Float32Array(NB*6*2);
+var bCOR0=new Float32Array(NB*6*2);
 var bBase=[];
 for(var bi=0;bi<NB;bi++){
   bBase.push({a:Math.random()*6.283,r:0.15+Math.random()*0.85,y:(Math.random()-0.5)*0.7,
-    rad:6+Math.random()*14,al:0.10+Math.random()*0.14,sd:Math.random(),dp:(Math.random()-0.5)*14});
+    rad:6+Math.random()*14,al:0.10+Math.random()*0.14,sd:Math.random(),dp:(Math.random()-0.5)*14,
+    hueShift:(Math.random()-0.5)*0.35});
   for(var bc2=0;bc2<6;bc2++){
     var cn=[[-1,-1],[1,-1],[1,1],[-1,-1],[1,1],[-1,1]][bc2];
     bCOR[(bi*6+bc2)*2]=cn[0];bCOR[(bi*6+bc2)*2+1]=cn[1];
+    bCOR0[(bi*6+bc2)*2]=cn[0];bCOR0[(bi*6+bc2)*2+1]=cn[1];
   }
 }
 var bCenBuf=gl.createBuffer(),bColBuf=gl.createBuffer(),bRadBuf=gl.createBuffer(),
@@ -487,9 +738,10 @@ function updateBillboards(time){
   var darkF=Math.max(0.45,cur.l);
   // Wind: gusting vector from turbulence
   var gust=0.6+0.4*Math.sin(time*0.7)+0.25*Math.sin(time*1.7);
-  var windStr=cur.tb*4*gust;
+  var windStr=(EL.wind*5+cur.tb*1.5)*gust;
   var windAng=time*0.15;
   var windX=Math.cos(windAng)*windStr, windZ=Math.sin(windAng)*windStr*0.6;
+  var _wl=Math.hypot(windX,windZ); if(_wl>3){windX*=3/_wl;windZ*=3/_wl;}
   for(var i=0;i<NB;i++){
     var b=bBase[i];
     if(b.drag===undefined)b.drag=0.4+Math.random()*0.8;
@@ -505,7 +757,7 @@ function updateBillboards(time){
     var squash=1-Math.min(0.3,windStr*0.04*b.drag);
     var wcos=Math.cos(windAng),wsin=Math.sin(windAng);
     for(var c2=0;c2<6;c2++){
-      var cx0=bCOR[(i*6+c2)*2],cy0=bCOR[(i*6+c2)*2+1];
+      var cx0=bCOR0[(i*6+c2)*2],cy0=bCOR0[(i*6+c2)*2+1];
       // rotate corner into wind frame, stretch, rotate back
       var rx=cx0*wcos+cy0*wsin, ry=-cx0*wsin+cy0*wcos;
       rx*=stretch; ry*=squash;
@@ -516,9 +768,17 @@ function updateBillboards(time){
       var vi=i*6+j;
       bCX[vi*3]=x;bCX[vi*3+1]=y;bCX[vi*3+2]=z;
       var depthF=1-Math.min(1,Math.abs(z+4)/20)*0.4;
-      bCC[vi*3]=base[0]*darkF*depthF;bCC[vi*3+1]=base[1]*darkF*depthF;bCC[vi*3+2]=base[2]*darkF*depthF;
-      bRD[vi]=b.rad*(0.8+cur.i*0.5);
-      bAL[vi]=b.al*(1.6+cur.l*1.5);
+      var stormDark=1-EL.lightning*0.55;
+      var hs=b.hueShift||0;
+      bCC[vi*3]=Math.min(1,base[0]*darkF*depthF*stormDark+Math.max(0,hs)*0.5);
+      bCC[vi*3+1]=base[1]*darkF*depthF*stormDark;
+      bCC[vi*3+2]=Math.min(1,base[2]*darkF*depthF*stormDark+Math.max(0,-hs)*0.5);
+      bRD[vi]=Math.min(14,b.rad*(0.8+cur.i*0.5));
+      var _cdx=x-camPos[0],_cdy=y-camPos[1],_cdz=z-camPos[2];
+      var _cdist=Math.sqrt(_cdx*_cdx+_cdy*_cdy+_cdz*_cdz);
+      var _camFade=Math.min(1,Math.max(0,(_cdist-10)/8));
+      var _smokeX=1-Math.min(1,EL.smoke*2.2);
+      bAL[vi]=b.al*(1.6+cur.l*1.5)*_camFade*_smokeX;
     }
   }
   gl.bindBuffer(gl.ARRAY_BUFFER,bCenBuf);gl.bufferData(gl.ARRAY_BUFFER,bCX,gl.DYNAMIC_DRAW);
@@ -564,15 +824,79 @@ function updateForeground(time){
   gl.bindBuffer(gl.ARRAY_BUFFER,fgColB);gl.bufferData(gl.ARRAY_BUFFER,fgCol,gl.DYNAMIC_DRAW);
   gl.bindBuffer(gl.ARRAY_BUFFER,fgSizeB);gl.bufferData(gl.ARRAY_BUFFER,fgSize,gl.DYNAMIC_DRAW);
 }
+/* ---- Sunlight rays (happiness + warmth) ---- */
+var NRAY=14;
+var rayPos=new Float32Array(NRAY*2*3), rayCol=new Float32Array(NRAY*2*3);
+var rayBuf=gl.createBuffer(), rayColB=gl.createBuffer();
+function updateSunRays(time,proj,view){
+  if(!show.rays)return;
+  var rayI=Math.max(EL.sun, EL.lightning*0.7);
+  if(rayI>0.03){
+    var sunI=rayI;
+    for(var i=0;i<NRAY;i++){
+      var a=(i/NRAY)*Math.PI*2+time*0.05;
+      var len=(6+Math.sin(time*1.3+i)*2)*(0.5+sunI*0.8);
+      var dx=Math.cos(a),dy=Math.sin(a)*0.6;
+      // perpendicular for jaggedness
+      var px2=-dy,py2=dx;
+      var pts=[];
+      var segs=9;
+      for(var s2=0;s2<=segs;s2++){
+        var t=s2/segs;
+        var rr=1.5+t*(len-1.5);
+        var jag=(Math.sin(s2*12.9898+i*78.233)*43758.5453)%1;
+        jag=(jag-Math.floor(jag)-0.5)*2.0*(0.4+t*1.4);
+        // animate the jag slightly
+        jag+=Math.sin(time*4+s2*2.1+i)*0.15*t;
+        pts.push([dx*rr+px2*jag, dy*rr+py2*jag, -4+Math.sin(a)*2*t+Math.sin(time*2+s2)*0.1*t]);
+      }
+      var b=sunI*(0.7+0.3*Math.sin(time*3+i*1.7));
+      var stormMix=Math.min(1,EL.lightning*1.5);
+      var cr=b*(1.4-0.5*stormMix), cg=b*(1.1-0.2*stormMix), cb=b*(0.5+0.7*stormMix);
+      boltRibbons(pts,0.055,cr,cg,cb,0.9+0.2*Math.sin(time*5+i));
+    }
+  }
+  drawRibbons(proj,view);
+}
+/* ---- Sparkle glitter (joy + brightness) ---- */
+var NSP=250;
+var spPos=new Float32Array(NSP*3),spCol=new Float32Array(NSP*3),spSize=new Float32Array(NSP),spSeed=new Float32Array(NSP);
+var spBase=[];
+for(var spi=0;spi<NSP;spi++){
+  spBase.push({a:Math.random()*6.283,r:Math.pow(Math.random(),0.7),ph:Math.random()*6.28,sd:Math.random(),sz:0.5+Math.random()*1.2});
+  spSeed[spi]=spBase[spi].sd;
+}
+var spBuf=gl.createBuffer(),spColB=gl.createBuffer(),spSizeB=gl.createBuffer(),spSdB=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,spSdB);gl.bufferData(gl.ARRAY_BUFFER,spSeed,gl.STATIC_DRAW);
+function updateSparkle(time){
+  var spread=gSpread;
+  for(var k=0;k<NSP;k++){
+    var b=spBase[k];
+    if(EL.sparkle<0.03){spPos[k*3+1]=-100;spCol[k*3]=spCol[k*3+1]=spCol[k*3+2]=0;spSize[k]=0.01;continue;}
+    b.a+=0.01;
+    var r=b.r*spread*0.75;
+    spPos[k*3]=Math.cos(b.a)*r;
+    spPos[k*3+1]=Math.sin(b.a*2+time)*r*0.3;
+    spPos[k*3+2]=Math.sin(b.a)*r*0.7-4;
+    var tw=0.3+0.7*Math.abs(Math.sin(time*4+b.ph*5));
+    spCol[k*3]=1.0*tw*EL.sparkle;spCol[k*3+1]=0.95*tw*EL.sparkle;spCol[k*3+2]=0.75*tw*EL.sparkle;
+    spSize[k]=b.sz*(0.8+tw*0.8);
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER,spBuf);gl.bufferData(gl.ARRAY_BUFFER,spPos,gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER,spColB);gl.bufferData(gl.ARRAY_BUFFER,spCol,gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER,spSizeB);gl.bufferData(gl.ARRAY_BUFFER,spSize,gl.DYNAMIC_DRAW);
+}
 /* ================= PLANETS ================= */
-var NPL=3;
+var NPL=5;
 var planets=[
-  {a:0.5,r:0.55,y:2.5,size:1.8,col:[0.3,0.6,1.0],sp:0.05},
-  {a:2.8,r:0.75,y:-3.0,size:2.6,col:[1.0,0.5,0.2],sp:0.03},
-  {a:4.5,r:0.4,y:1.0,size:1.2,col:[0.5,1.0,0.7],sp:0.08}
+  {a:0.8,r:1.70,y:4.5,size:4.2,type:0,sp:0.020},  /* gas giant - background */
+  {a:2.9,r:1.35,y:-3.2,size:2.8,type:1,sp:0.045}, /* rocky - away from center */
+  {a:4.4,r:1.50,y:-4.8,size:2.2,type:2,sp:0.030}, /* ice - away from center */
+  {a:5.6,r:1.60,y:2.8,size:3.0,type:3,sp:0.060},  /* lava - background */
+  {a:1.9,r:1.90,y:0.8,size:3.8,type:4,sp:0.015}   /* ringed - deep background */
 ];
-var plCen=new Float32Array(NPL*6*3),plCol=new Float32Array(NPL*6*3),
-    plRad=new Float32Array(NPL*6),plAlp=new Float32Array(NPL*6),
+var plCen=new Float32Array(NPL*6*3),plTyp=new Float32Array(NPL*6),
+    plRad=new Float32Array(NPL*6),
     plCor=new Float32Array(NPL*6*2),plSd=new Float32Array(NPL*6);
 (function(){
   var cn=[[-1,-1],[1,-1],[1,1],[-1,-1],[1,1],[-1,1]];
@@ -580,8 +904,8 @@ var plCen=new Float32Array(NPL*6*3),plCol=new Float32Array(NPL*6*3),
     plCor[(pi*6+q)*2]=cn[q][0];plCor[(pi*6+q)*2+1]=cn[q][1];plSd[pi*6+q]=Math.random();
   }
 })();
-var plCenBuf=gl.createBuffer(),plColBuf=gl.createBuffer(),plRadBuf=gl.createBuffer(),
-    plAlpBuf=gl.createBuffer(),plCorBuf=gl.createBuffer(),plSdBuf=gl.createBuffer();
+var plCenBuf=gl.createBuffer(),plTypBuf=gl.createBuffer(),plRadBuf=gl.createBuffer(),
+    plCorBuf=gl.createBuffer(),plSdBuf=gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER,plCorBuf);gl.bufferData(gl.ARRAY_BUFFER,plCor,gl.STATIC_DRAW);
 gl.bindBuffer(gl.ARRAY_BUFFER,plSdBuf);gl.bufferData(gl.ARRAY_BUFFER,plSd,gl.STATIC_DRAW);
 
@@ -590,18 +914,95 @@ function updatePlanets(){
   for(var pi=0;pi<NPL;pi++){
     var p=planets[pi];
     p.a+=p.sp*0.016;
-    var x=Math.cos(p.a)*spread*p.r*1.3,z=Math.sin(p.a)*spread*p.r*1.1-4,y=p.y;
+    var x=Math.cos(p.a)*spread*p.r*1.35,z=Math.sin(p.a)*spread*p.r*1.15-4,y=p.y;
     for(var q=0;q<6;q++){
       var vi=pi*6+q;
       plCen[vi*3]=x;plCen[vi*3+1]=y;plCen[vi*3+2]=z;
-      plCol[vi*3]=p.col[0];plCol[vi*3+1]=p.col[1];plCol[vi*3+2]=p.col[2];
-      plRad[vi]=p.size;plAlp[vi]=0.95;
+      plTyp[vi]=p.type;plRad[vi]=p.size;
     }
   }
   gl.bindBuffer(gl.ARRAY_BUFFER,plCenBuf);gl.bufferData(gl.ARRAY_BUFFER,plCen,gl.DYNAMIC_DRAW);
-  gl.bindBuffer(gl.ARRAY_BUFFER,plColBuf);gl.bufferData(gl.ARRAY_BUFFER,plCol,gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER,plTypBuf);gl.bufferData(gl.ARRAY_BUFFER,plTyp,gl.DYNAMIC_DRAW);
   gl.bindBuffer(gl.ARRAY_BUFFER,plRadBuf);gl.bufferData(gl.ARRAY_BUFFER,plRad,gl.DYNAMIC_DRAW);
-  gl.bindBuffer(gl.ARRAY_BUFFER,plAlpBuf);gl.bufferData(gl.ARRAY_BUFFER,plAlp,gl.DYNAMIC_DRAW);
+}
+
+var NSP2=160;
+var spkCen=new Float32Array(NSP2*6*3),spkCor=new Float32Array(NSP2*6*2),
+    spkRad=new Float32Array(NSP2*6),spkSd=new Float32Array(NSP2*6),spkBr=new Float32Array(NSP2*6);
+var spkBase=[];
+for(var spi=0;spi<NSP2;spi++){
+  spkBase.push({
+    x:(Math.random()-0.5)*36, y:(Math.random()-0.5)*20, z:-4+(Math.random()-0.5)*24,
+    sz:0.25+Math.random()*0.55, sd:Math.random(), ph:Math.random()*6.28
+  });
+}
+(function(){
+  var cn=[[-1,-1],[1,-1],[1,1],[-1,-1],[1,1],[-1,1]];
+  for(var pi=0;pi<NSP2;pi++)for(var q=0;q<6;q++){
+    spkCor[(pi*6+q)*2]=cn[q][0];spkCor[(pi*6+q)*2+1]=cn[q][1];spkSd[pi*6+q]=spkBase[pi].sd;
+  }
+})();
+var spkCenBuf=gl.createBuffer(),spkCorBuf=gl.createBuffer(),spkRadBuf=gl.createBuffer(),
+    spkSdBuf=gl.createBuffer(),spkBrBuf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,spkCorBuf);gl.bufferData(gl.ARRAY_BUFFER,spkCor,gl.STATIC_DRAW);
+gl.bindBuffer(gl.ARRAY_BUFFER,spkSdBuf);gl.bufferData(gl.ARRAY_BUFFER,spkSd,gl.STATIC_DRAW);
+function updateSparkles(time){
+  var boost=0.35+EL.sparkle*1.8+cur.l*0.5;
+  for(var i=0;i<NSP2;i++){
+    var b=spkBase[i];
+    // gentle drift
+    var x=b.x+Math.sin(time*0.3+b.ph)*0.8;
+    var y=b.y+Math.cos(time*0.22+b.ph*1.3)*0.6;
+    for(var q=0;q<6;q++){
+      var vi=i*6+q;
+      spkCen[vi*3]=x;spkCen[vi*3+1]=y;spkCen[vi*3+2]=b.z;
+      spkRad[vi]=b.sz;
+      spkBr[vi]=boost*(0.6+0.4*Math.sin(time*1.5+b.ph*3.0));
+    }
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER,spkCenBuf);gl.bufferData(gl.ARRAY_BUFFER,spkCen,gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER,spkRadBuf);gl.bufferData(gl.ARRAY_BUFFER,spkRad,gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER,spkBrBuf);gl.bufferData(gl.ARRAY_BUFFER,spkBr,gl.DYNAMIC_DRAW);
+}
+
+var shockBubbles=[];
+var shCenBuf=gl.createBuffer(),shCorBuf=gl.createBuffer(),shRadBuf=gl.createBuffer();
+(function(){
+  var cn=[[-1,-1],[1,-1],[1,1],[-1,-1],[1,1],[-1,1]];
+  var tmp=new Float32Array(6*2);
+  for(var q=0;q<6;q++){tmp[q*2]=cn[q][0];tmp[q*2+1]=cn[q][1];}
+  gl.bindBuffer(gl.ARRAY_BUFFER,shCorBuf);gl.bufferData(gl.ARRAY_BUFFER,tmp,gl.STATIC_DRAW);
+})();
+function spawnShockBubble(){
+  shockBubbles.push({
+    x:(Math.random()-0.5)*16, y:(Math.random()-0.5)*8, z:-4+(Math.random()-0.5)*8,
+    r:0.5, maxR:6+Math.random()*6, life:1
+  });
+}
+function updateShockBubbles(time,proj,view){
+  // Trigger: supernova emotion OR high intensity + high luminosity moments
+  var shockTrig=EL.supernova>0.5||(cur.i>0.85&&cur.l>0.7&&Math.random()<0.008);
+  if(shockTrig&&shockBubbles.length<3)spawnShockBubble();
+  if(shockBubbles.length===0)return;
+  var cen=[],rad=[];
+  for(var i=shockBubbles.length-1;i>=0;i--){
+    var b=shockBubbles[i];
+    b.r+=(b.maxR-b.r)*0.03+0.08;
+    b.life-=0.008;
+    if(b.life<=0||b.r>=b.maxR){shockBubbles.splice(i,1);continue;}
+    for(var q=0;q<6;q++){
+      cen.push(b.x,b.y,b.z);rad.push(b.r);
+    }
+  }
+  if(cen.length===0)return;
+  gl.useProgram(prSH);
+  gl.uniformMatrix4fv(gl.getUniformLocation(prSH,"uProj"),false,proj);
+  gl.uniformMatrix4fv(gl.getUniformLocation(prSH,"uView"),false,view);
+  gl.uniform1f(gl.getUniformLocation(prSH,"uTime"),time);
+  gl.bindBuffer(gl.ARRAY_BUFFER,shCenBuf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(cen),gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER,shRadBuf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(rad),gl.DYNAMIC_DRAW);
+  attr(prSH,shCenBuf,"aCenter",3);attr(prSH,shCorBuf,"aCorner",2);attr(prSH,shRadBuf,"aRadius",1);
+  gl.drawArrays(gl.TRIANGLES,0,cen.length/3);
 }
 
 /* ================= LIGHTNING (fractal + HDR lines + glow) ================= */
@@ -613,6 +1014,8 @@ for(var lbi=0;lbi<NLB;lbi++)lbSeed[lbi]=Math.random();
 var lbBuf=gl.createBuffer(),lbColBuf=gl.createBuffer(),lbSizeBuf=gl.createBuffer(),lbSeedBuf=gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER,lbSeedBuf);gl.bufferData(gl.ARRAY_BUFFER,lbSeed,gl.STATIC_DRAW);
 var lnPosBuf=gl.createBuffer(),lnColBuf=gl.createBuffer();
+var rbPosBuf=gl.createBuffer(),rbColBuf=gl.createBuffer(),rbUVBuf=gl.createBuffer();
+var MAXRB=6000;
 
 function makeBolt3D(){
   var spread=gSpread;
@@ -633,7 +1036,7 @@ function makeBolt3D(){
   }
   var pts=subdiv(p0,p1,2.5,5);
   var branches=[];
-  var nBr=3+Math.floor(Math.random()*3);
+  var nBr=4+Math.floor(Math.random()*4);
   for(var bi=0;bi<nBr;bi++){
     var idx=4+Math.floor(Math.random()*Math.max(1,pts.length-8));
     var bp=pts[idx];
@@ -644,7 +1047,52 @@ function makeBolt3D(){
   return {pts:pts,branches:branches,life:1,trail:[],_gold:false};
 }
 
+/* Shared ribbon system (lightning + electric sun rays) */
+var rbRp=[],rbRc=[],rbRu=[],rbRn=0;
+function ribbonSeg(p0,p1,w0,w1,r,g,b){
+  if(rbRn>=MAXRB)return;
+  var cx=camPos[0],cy=camPos[1],cz=camPos[2];
+  var dx=p1[0]-p0[0],dy=p1[1]-p0[1],dz=p1[2]-p0[2];
+  var mx=(p0[0]+p1[0])/2-cx,my=(p0[1]+p1[1])/2-cy,mz=(p0[2]+p1[2])/2-cz;
+  var sx=dy*mz-dz*my,sy=dz*mx-dx*mz,sz=dx*my-dy*mx;
+  var sl=Math.hypot(sx,sy,sz)||1;sx/=sl;sy/=sl;sz/=sl;
+  var v=[
+    [p0[0]-sx*w0,p0[1]-sy*w0,p0[2]-sz*w0,0],
+    [p0[0]+sx*w0,p0[1]+sy*w0,p0[2]+sz*w0,1],
+    [p1[0]-sx*w1,p1[1]-sy*w1,p1[2]-sz*w1,0],
+    [p1[0]+sx*w1,p1[1]+sy*w1,p1[2]+sz*w1,1]
+  ];
+  var idx=[0,1,2,1,3,2];
+  for(var k=0;k<6;k++){
+    var vv=v[idx[k]];
+    rbRp.push(vv[0],vv[1],vv[2]);rbRc.push(r,g,b);rbRu.push(idx[k]%2,vv[3]);rbRn++;
+  }
+}
+function boltRibbons(pts,wBase,colR,colG,colB,flick){
+  for(var s=0;s<pts.length-1;s++){
+    var p0=pts[s],p1=pts[s+1];
+    var t=s/(pts.length-1);
+    var taper=1-t*0.6;
+    var w=wBase*taper*(0.8+0.4*flick);
+    ribbonSeg(p0,p1,w*5.5,w*5.5,colR*0.18,colG*0.22,colB*0.45);
+    ribbonSeg(p0,p1,w,w,colR,colG,colB);
+  }
+}
+function drawRibbons(proj,view){
+  if(rbRn>0){
+    gl.useProgram(prR);
+    gl.uniformMatrix4fv(gl.getUniformLocation(prR,"uProj"),false,proj);
+    gl.uniformMatrix4fv(gl.getUniformLocation(prR,"uView"),false,view);
+    gl.bindBuffer(gl.ARRAY_BUFFER,rbPosBuf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(rbRp),gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER,rbColBuf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(rbRc),gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER,rbUVBuf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(rbRu),gl.DYNAMIC_DRAW);
+    attr(prR,rbPosBuf,"aPos",3);attr(prR,rbColBuf,"aCol",3);attr(prR,rbUVBuf,"aUV",2);
+    gl.drawArrays(gl.TRIANGLES,0,rbRn);
+  }
+  rbRp=[];rbRc=[];rbRu=[];rbRn=0;
+}
 function drawLightning(time,proj,view){
+  // glow points (for orb mode and trail)
   var lp=[],lc=[],n=0;
   function addGlow(x,y,z,br,sz,gold){
     if(n>=NLB)return;
@@ -655,30 +1103,20 @@ function drawLightning(time,proj,view){
   }
   for(var i=0;i<bolts.length;i++){
     var b=bolts[i];
-    var fl=b.life>0.75?3.2:(b.life>0.3?1.4:b.life*2.5);
-    for(var s=0;s<b.pts.length-1;s++){
-      var p0=b.pts[s],p1=b.pts[s+1];
-      for(var pass=0;pass<2;pass++){
-        lp.push(p0[0],p0[1],p0[2],p1[0],p1[1],p1[2]);
-        var core=fl*(pass===0?1.0:0.4);
-        lc.push(core,core*0.97,core*0.92,core,core*0.97,core*0.92);
-      }
-      if(lightningOrbs&&s%3===0){
-        addGlow((p0[0]+p1[0])/2,(p0[1]+p1[1])/2,(p0[2]+p1[2])/2,fl*0.35,6+Math.random()*5,b._gold);
-      }
-    }
+    // GTA V flicker: bright strike, flickering decay
+    var flick=b.life>0.7?1.0:(0.6+0.4*Math.sin(time*16+b.pts[0][0]*10));
+    var fl=(b.life>0.75?3.4:(b.life>0.3?1.6:b.life*2.8))*flick;
+    // main channel: white-hot core + blue halo
+    boltRibbons(b.pts,0.09,fl,fl*0.96,fl*0.88,1.0);
+    // branches: thinner, bluer
     for(var bi=0;bi<b.branches.length;bi++){
       var br=b.branches[bi],bp=br.pts;
-      for(var bs=0;bs<bp.length-1;bs++){
-        lp.push(bp[bs][0],bp[bs][1],bp[bs][2],bp[bs+1][0],bp[bs+1][1],bp[bs+1][2]);
-        var bc=fl*br.w;
-        lc.push(bc*0.8,bc*0.85,bc,bc*0.8,bc*0.85,bc);
-      }
+      boltRibbons(bp,0.05*br.w+0.02,fl*0.75*br.w,fl*0.8*br.w,fl*br.w,0.8);
     }
-    if(lightningOrbs&&b.life>0.6){
-      var op=b.pts[0];
-      for(var g=0;g<6;g++){
-        addGlow(op[0]+(Math.random()-0.5)*3,op[1]+(Math.random()-0.5)*3,op[2]+(Math.random()-0.5)*3,fl*0.5,8+Math.random()*8,false);
+    if(lightningOrbs){
+      for(var s=0;s<b.pts.length;s+=3){
+        var pp=b.pts[s];
+        addGlow(pp[0],pp[1],pp[2],fl*0.3,7+Math.random()*6,b._gold);
       }
     }
     for(var ti=0;ti<b.trail.length;ti++){
@@ -689,29 +1127,20 @@ function drawLightning(time,proj,view){
       }
     }
   }
-  /* Solar flare arcs as gold lines */
+  /* Solar flare arcs as gold ribbons */
   for(var fi=0;fi<flares.length;fi++){
     var f=flares[fi],fp=f.pts;
-    for(var fs2=0;fs2<fp.length-1;fs2++){
-      lp.push(fp[fs2][0],fp[fs2][1],fp[fs2][2],fp[fs2+1][0],fp[fs2+1][1],fp[fs2+1][2]);
-      var fb=f.life*2.2;
-      lc.push(fb,fb*0.7,fb*0.3,fb,fb*0.7,fb*0.3);
-    }
+    var fb=f.life*2.4;
+    boltRibbons(fp,0.06,fb,fb*0.65,fb*0.25,1.0);
   }
-  if(lp.length>0){
-    gl.useProgram(prL);
-    gl.uniformMatrix4fv(gl.getUniformLocation(prL,"uProj"),false,proj);
-    gl.uniformMatrix4fv(gl.getUniformLocation(prL,"uView"),false,view);
-    gl.bindBuffer(gl.ARRAY_BUFFER,lnPosBuf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(lp),gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER,lnColBuf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(lc),gl.DYNAMIC_DRAW);
-    attr(prL,lnPosBuf,"aPos",3);attr(prL,lnColBuf,"aCol",3);
-    gl.drawArrays(gl.LINES,0,lp.length/3);
+  drawRibbons(proj,view);
+  // Draw glow points
+  if(n>0){
+    gl.bindBuffer(gl.ARRAY_BUFFER,lbBuf);gl.bufferData(gl.ARRAY_BUFFER,lbPos,gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER,lbColBuf);gl.bufferData(gl.ARRAY_BUFFER,lbCol,gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER,lbSizeBuf);gl.bufferData(gl.ARRAY_BUFFER,lbSize,gl.DYNAMIC_DRAW);
+    drawPointsP(prP,time,proj,view,lbBuf,lbColBuf,lbSizeBuf,lbSeedBuf,n);
   }
-  for(var pk=n;pk<NLB;pk++){lbPos[pk*3+1]=-100;lbCol[pk*3]=lbCol[pk*3+1]=lbCol[pk*3+2]=0;lbSize[pk]=0.01;}
-  gl.bindBuffer(gl.ARRAY_BUFFER,lbBuf);gl.bufferData(gl.ARRAY_BUFFER,lbPos,gl.DYNAMIC_DRAW);
-  gl.bindBuffer(gl.ARRAY_BUFFER,lbColBuf);gl.bufferData(gl.ARRAY_BUFFER,lbCol,gl.DYNAMIC_DRAW);
-  gl.bindBuffer(gl.ARRAY_BUFFER,lbSizeBuf);gl.bufferData(gl.ARRAY_BUFFER,lbSize,gl.DYNAMIC_DRAW);
-  if(n>0)drawPointsP(prP,time,proj,view,lbBuf,lbColBuf,lbSizeBuf,lbSeedBuf,NLB);
 }
 
 /* ================= SOLAR FLARES ================= */
@@ -746,7 +1175,7 @@ function updateShockwave(){
   if(!snova.active){
     for(var k=0;k<NSW;k++){swPos[k*3+1]=-100;swCol[k*3]=swCol[k*3+1]=swCol[k*3+2]=0;swSize[k]=0.01;}
   }else{
-    var R=snova.t*22,fade=Math.max(0,1-snova.t/1.4);
+    var R=snova.t*22,fade=Math.max(0,1-snova.t/1.6);
     for(var k2=0;k2<NSW;k2++){
       var d=swDir[k2];
       swPos[k2*3]=d[0]*R;swPos[k2*3+1]=d[1]*R*0.7;swPos[k2*3+2]=d[2]*R-4;
@@ -768,7 +1197,7 @@ errDiv.style.cssText='position:absolute;top:8px;right:8px;font-size:10px;color:#
 canvas.parentElement.appendChild(errDiv);
 var _lActDbg=0;
 function updateDiag(){
-  var msg="[v8b] emo: "+cur.name+"\\n theme: "+(cur.theme||"none")+"\\n lAct: "+_lActDbg.toFixed(2)+"\\n bolts: "+bolts.length+"\\n flares: "+flares.length;
+  var msg="[v15] emo: "+cur.name+"\\n theme: "+(cur.theme||"none")+"\\n lAct: "+_lActDbg.toFixed(2)+"\\n bolts: "+bolts.length+"\\n flares: "+flares.length+"\\n el: F"+EL.fire.toFixed(1)+" L"+EL.lightning.toFixed(1)+" W"+EL.wind.toFixed(1)+" S"+EL.sun.toFixed(1);
   if(glErrors.length)msg+="\\nGL ERRORS: "+glErrors.length;
   hud.textContent=msg;
   if(glErrors.length){errDiv.textContent=glErrors.join("\\n").substring(0,500);errDiv.style.display="block";}
@@ -826,6 +1255,7 @@ document.getElementById('gxdrift').onclick=function(){
 
 /* ================= MAIN LOOP ================= */
 var camR=26,camA=0.6,camH=7;
+var camPos=[26,7,0];
 var startT=performance.now();
 function loop(){
   requestAnimationFrame(loop);
@@ -834,11 +1264,13 @@ function loop(){
   for(var qi=0;qi<keys.length;qi++){kk=keys[qi];cur[kk]+=(tgt[kk]-cur[kk])*0.04;}
   if(Math.abs(cur.v-tgt.v)<0.04&&Math.abs(cur.i-tgt.i)<0.04){cur.hue=tgt.hue;cur.theme=tgt.theme;}
   flashA*=0.85;
+  updateElements2();
   camA+=0.0006*(0.5+cur.tb);
 
   var w=canvas.width,h=canvas.height;
   var proj=persp(55*Math.PI/180,w/h,0.5,200);
   var ex=Math.cos(camA)*camR,ez=Math.sin(camA)*camR;
+  camPos=[ex,camH,ez];
   var view=lookAt([ex,camH,ez],[0,-1,0],[0,1,0]);
 
   gl.clearColor(0.004,0.004,0.012,1);
@@ -857,41 +1289,50 @@ function loop(){
   var cc=hueRGB(cur.hue);
   /* (core drawn via billboard glow below) */
 
-  drawPointsP(prP,time,proj,view,dBuf,dColB,dSizeB,dSeedB,ND);
-  drawBillboardsP(prB,time,proj,view);
-  drawCoreGlow(prB,time,proj,view);
+  if(show.dust)drawPointsP(prP,time,proj,view,dBuf,dColB,dSizeB,dSeedB,ND);
+  if(show.clouds)drawBillboardsP(prB,time,proj,view);
+  if(show.clouds)drawCoreGlow(prB,time,proj,view);
   /* planets via billboard prog */
-  (function(){
-    bindProg(prB,proj,view,time);
-    attr(prB,plCenBuf,"aCenter",3);attr(prB,plCorBuf,"aCorner",2);attr(prB,plColBuf,"aCol",3);
-    attr(prB,plRadBuf,"aRadius",1);attr(prB,plAlpBuf,"aAlpha",1);attr(prB,plSdBuf,"aSeed",1);
+  updateSparkles(time);
+  if(show.sparkle)(function(){
+    gl.useProgram(prSP);
+    gl.uniformMatrix4fv(gl.getUniformLocation(prSP,"uProj"),false,proj);
+    gl.uniformMatrix4fv(gl.getUniformLocation(prSP,"uView"),false,view);
+    gl.uniform1f(gl.getUniformLocation(prSP,"uTime"),time);
+    attr(prSP,spkCenBuf,"aCenter",3);attr(prSP,spkCorBuf,"aCorner",2);
+    attr(prSP,spkRadBuf,"aRadius",1);attr(prSP,spkSdBuf,"aSeed",1);attr(prSP,spkBrBuf,"aBright",1);
+    gl.drawArrays(gl.TRIANGLES,0,NSP2*6);
+  })();
+  if(show.shock)updateShockBubbles(time,proj,view);
+  if(show.planets)(function(){
+    gl.useProgram(prPL);
+    gl.uniformMatrix4fv(gl.getUniformLocation(prPL,"uProj"),false,proj);
+    gl.uniformMatrix4fv(gl.getUniformLocation(prPL,"uView"),false,view);
+    gl.uniform1f(gl.getUniformLocation(prPL,"uTime"),time);
+    attr(prPL,plCenBuf,"aCenter",3);attr(prPL,plCorBuf,"aCorner",2);
+    attr(prPL,plRadBuf,"aRadius",1);attr(prPL,plTypBuf,"aType",1);attr(prPL,plSdBuf,"aSeed",1);
     gl.drawArrays(gl.TRIANGLES,0,NPL*6);
   })();
-  drawPointsP(prP,time,proj,view,sBuf,sColBuf,sSizeBuf,sSeedBuf,NS);
-  if(cur.theme&&cur.theme!=="nebula")drawPointsP(prP,time,proj,view,eBuf,eColBuf,eSizeBuf,eSeedBuf,NE);
+  if(show.stars)drawPointsP(prP,time,proj,view,sBuf,sColBuf,sSizeBuf,sSeedBuf,NS);
+  if(show.elements&&cur.theme&&cur.theme!=="nebula")drawPointsP(prP,time,proj,view,eBuf,eColBuf,eSizeBuf,eSeedBuf,NE);
   updateSnow(time);
   updateSmoke(time);
   updateForeground(time);
-  drawPointsP(prP,time,proj,view,fgBuf,fgColB,fgSizeB,fgSdB,NFG);
-  drawPointsP(prP,time,proj,view,smBuf,smColB,smSizeB,smSdB,NSM);
-  drawPointsP(prP,time,proj,view,snBuf,snColB,snSizeB,snSdB,NSW2);
-  drawPointsP(prP,time,proj,view,swBuf,swColB,swSizeB,swSeedB,NSW);
+  if(show.fg)drawPointsP(prP,time,proj,view,fgBuf,fgColB,fgSizeB,fgSdB,NFG);
+  if(show.smoke)drawPointsP(prP,time,proj,view,smBuf,smColB,smSizeB,smSdB,NSM);
+  if(show.snow)drawPointsP(prP,time,proj,view,snBuf,snColB,snSizeB,snSdB,NSW2);
+  if(show.shock)drawPointsP(prP,time,proj,view,swBuf,swColB,swSizeB,swSeedB,NSW);
 
   /* Lightning lifecycle */
-  var lAct=Math.max(0,cur.tb-0.18)*3.2;
-  if(cur.name&&cur.name.indexOf("ion storm")>=0)lAct=Math.max(lAct,1.6);
-  if(cur.name&&cur.name.indexOf("thunderhead")>=0)lAct=Math.max(lAct,1.3);
-  if(cur.name&&cur.name.indexOf("solar fury")>=0)lAct=Math.max(lAct,1.1);
-  if(cur.name&&cur.name.indexOf("electric")>=0)lAct=Math.max(lAct,0.9);
-  if(cur.name&&cur.name.indexOf("storm")>=0)lAct=Math.max(lAct,0.8);
+  var lAct=EL.lightning*1.8;
   for(var bi3=bolts.length-1;bi3>=0;bi3--){
     var _b=bolts[bi3];
     if(_b.life>0.4&&Math.random()<0.5){
-      _b.trail.push({pts:_b.pts.map(function(p){return [p[0],p[1],p[2]];}),a:_b.life*0.35});
+      _b.trail.push({pts:_b.pts.map(function(p){return [p[0],p[1],p[2]];}),a:_b.life*0.3});
       if(_b.trail.length>6)_b.trail.shift();
     }
     for(var _ti=_b.trail.length-1;_ti>=0;_ti--){_b.trail[_ti].a-=0.03;if(_b.trail[_ti].a<=0)_b.trail.splice(_ti,1);}
-    _b.life-=0.035;
+    _b.life-=0.008;
     // Restrike: 25% chance the channel re-fires like real lightning
     if(_b.life<0.45&&!_b.restruck&&Math.random()<0.25){_b.life=0.85;_b.restruck=true;}
     if(_b.life<=0&&_b.trail.length===0)bolts.splice(bi3,1);
@@ -903,17 +1344,20 @@ function loop(){
     flashA=Math.min(0.3,lAct*0.18);
   }
   _lActDbg=lAct;
-  drawLightning(time,proj,view);
+  if(show.lightning)drawLightning(time,proj,view);
+  updateSunRays(time,proj,view);
+  updateSparkle(time);
+  if(show.sparkle)drawPointsP(prP,time,proj,view,spBuf,spColB,spSizeB,spSdB,NSP);
 
   /* Solar flares */
   var _nm=cur.name||"";
-  if(_nm.indexOf("solar flare")>=0&&Math.random()<0.22&&flares.length<8)flares.push(makeFlare());
+  if(EL.flare>0.25&&Math.random()<EL.flare*0.3&&flares.length<8)flares.push(makeFlare());
   for(var _fi=flares.length-1;_fi>=0;_fi--){flares[_fi].life-=0.025;if(flares[_fi].life<=0)flares.splice(_fi,1);}
 
   /* Supernova */
-  if(_nm.indexOf("supernova")>=0&&!snova.active&&Math.random()<0.01)snova={active:true,t:0};
+  if(EL.supernova>0.5&&!snova.active&&Math.random()<0.02)snova={active:true,t:0};
   if(snova.active){
-    snova.t+=0.025;
+    snova.t+=0.012;
     if(snova.t>1.4)snova.active=false;
     else flashA=Math.max(flashA,Math.max(0,0.55-snova.t*0.55));
   }
@@ -950,6 +1394,16 @@ function drawCoreGlow(prog,time,proj,view){
 }
 
 buildChips('');
+(function(){
+  var tg=document.getElementById('gxtoggles');
+  Object.keys(show).forEach(function(k){
+    var b=document.createElement('button');
+    b.textContent=k;
+    b.style.cssText='padding:3px 8px;border-radius:12px;font-size:10px;border:1px solid var(--hatch-widget-accent);background:transparent;color:var(--hatch-widget-accent);cursor:pointer';
+    b.onclick=function(){show[k]=!show[k];b.style.opacity=show[k]?'1':'0.35';};
+    tg.appendChild(b);
+  });
+})();
 resize();
 for(var sei=0;sei<E.length;sei++){if(E[sei][0]==="ion storm frustration"){setEmotion(sei);break;}}
 if(driftTimer)clearTimeout(driftTimer);
