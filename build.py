@@ -15,13 +15,18 @@ def extract_emotions():
     out = []
     for ev in GALAXY:
         c = ev.coords
+        v = ev.visual
         out.append([
             ev.name,
             round(c.valence, 3), round(c.intensity, 3), round(c.turbulence, 3),
             round(c.luminosity, 3), round(c.temperature, 3), round(c.gravity, 3),
             "".join(ev.behavior.hikari_emoji) if ev.behavior.hikari_emoji else "",
-            ev.visual.nebula_hue,
+            v.nebula_hue,
             ev.behavior.hikari_style, ev.behavior.athena_style,
+            # visual descriptors from the matrix
+            round(v.star_density, 3), round(v.cloud_coverage, 3),
+            round(v.lightning_activity, 3), round(v.color_temp, 3),
+            round(v.particle_drift, 3), round(v.corona, 3),
         ])
     return out
 
@@ -63,19 +68,23 @@ function getTheme(name){
 /* ============ ELEMENTAL MAPPING: elements attach to feelings ============ */
 var EL={fire:0,lightning:0,wind:0,smoke:0,sun:0,sparkle:0,snow:0,flare:0,supernova:0};
 function computeElementTargets(){
-  var n=String(cur.name||"").toLowerCase(),t={};
-  var angerFull=/anger|rage|fury|wrath|outrage/.test(n);
-  var angerMild=/irritat|annoy|frustrat|resent|bitter|hostil|livid/.test(n);
-  t.fire=angerFull?0.5+cur.i*0.5:(angerMild?0.25+cur.i*0.35:Math.max(0,-cur.v-0.5)*cur.i*0.8);
-  var elec=/electric|ion|thunder|lightning|storm|tempest|shock|static|surge/.test(n);
-  t.lightning=elec?0.4+cur.tb*0.6:Math.max(0,cur.tb-0.62)*2.5;
-  var calm=/tranquil|calm|serene|peace|still|gentle|mellow|relax|hush|lull/.test(n);
-  t.wind=calm?0.4+(1-cur.tb)*0.4:Math.max(0,0.35-cur.tb)*(cur.v>0?0.4:0.15);
-  t.smoke=Math.max(0,0.6-cur.l)*1.3;
-  t.sun=Math.max(0,cur.v-0.35)*Math.max(0,cur.tp-0.35)*3.0;
-  t.sparkle=Math.max(0,cur.v-0.45)*Math.max(0,cur.l-0.55)*3.5;
-  t.snow=Math.max(0,-cur.v-0.12)*1.6;
-  t.flare=/solar|sun/.test(n)?0.5+cur.i*0.5:0;
+  var vis=cur.vis||{stars:0.5,clouds:0.5,lightning:0.3,colorTemp:0.5,drift:0.5,corona:0.3};
+  var t={};
+  // Direct from matrix visual descriptors
+  t.lightning=vis.lightning;
+  t.sun=vis.corona;
+  t.wind=vis.drift*0.8;
+  // Derived: fire from heat + intensity (hot + intense = burning)
+  t.fire=Math.max(0,cur.tp-0.3)*cur.i*1.4;
+  // Derived: snow from cold + negative valence (cold + sad = frozen)
+  t.snow=Math.max(0,0.4-cur.tp)*Math.max(0,-cur.v)*1.8;
+  // Derived: smoke from clouds + low luminosity (thick + dark = smoky)
+  t.smoke=vis.clouds*Math.max(0,0.7-cur.l)*1.2;
+  // Derived: sparkle from stars + luminosity (dense stars + bright = sparkling)
+  t.sparkle=vis.stars*Math.max(0,cur.l-0.4)*1.5;
+  // Flare: solar names + corona
+  var n=String(cur.name||"").toLowerCase();
+  t.flare=(/solar|sun/.test(n)?0.5:0)+vis.corona*0.7;
   t.supernova=/supernova/.test(n)?1:0;
   for(var k in t)t[k]=Math.max(0,Math.min(1,t[k]));
   return t;
@@ -459,7 +468,7 @@ function attr(p,buf,name,sz){
 }
 
 /* ================= STATE ================= */
-var cur={v:-0.6,i:0.8,tb:0.7,l:0.5,tp:0.4,g:0.5,hue:"storm-teal",name:"ion storm frustration",theme:"storm"};
+var cur={v:-0.6,i:0.8,tb:0.7,l:0.5,tp:0.4,g:0.5,hue:"storm-teal",name:"ion storm frustration",theme:"storm",vis:{stars:0.7,clouds:0.6,lightning:0.8,colorTemp:0.3,drift:0.7,corona:0.2}};
 var lightningOrbs=false;
 var show={stars:true,elements:true,dust:true,clouds:true,planets:true,lightning:true,rays:true,smoke:true,snow:true,sparkle:true,shock:true,fg:true};
 var tgt=JSON.parse(JSON.stringify(cur));
@@ -1206,7 +1215,7 @@ function updateDiag(){
 /* ================= UI ================= */
 function setEmotion(idx){
   var e=E[idx];
-  tgt={v:e[1],i:e[2],tb:e[3],l:e[4],tp:e[5],g:e[6],hue:e[8],name:e[0],theme:getTheme(e[0])};
+  tgt={v:e[1],i:e[2],tb:e[3],l:e[4],tp:e[5],g:e[6],hue:e[8],name:e[0],theme:getTheme(e[0]),vis:{stars:e[11],clouds:e[12],lightning:e[13],colorTemp:e[14],drift:e[15],corona:e[16]}};
   var dims=["valence","intensity","turbulence","luminosity","temp","gravity"],bars="";
   for(var d=0;d<6;d++){
     var vv=Math.round(((e[d+1]+1)/2)*100);
@@ -1262,7 +1271,8 @@ function loop(){
   var time=(performance.now()-startT)/1000;
   var keys=["v","i","tb","l","tp","g"],kk;
   for(var qi=0;qi<keys.length;qi++){kk=keys[qi];cur[kk]+=(tgt[kk]-cur[kk])*0.04;}
-  if(Math.abs(cur.v-tgt.v)<0.04&&Math.abs(cur.i-tgt.i)<0.04){cur.hue=tgt.hue;cur.theme=tgt.theme;}
+  if(cur.vis&&tgt.vis){for(var vk in tgt.vis){cur.vis[vk]+=(tgt.vis[vk]-cur.vis[vk])*0.04;}}
+  if(Math.abs(cur.v-tgt.v)<0.04&&Math.abs(cur.i-tgt.i)<0.04){cur.hue=tgt.hue;cur.theme=tgt.theme;cur.name=tgt.name;}
   flashA*=0.85;
   updateElements2();
   camA+=0.0006*(0.5+cur.tb);
