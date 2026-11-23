@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Web UI EmotionMatrix (replica)</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a12;color:#e0e0e8;font-family:system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+h2{font-size:16px;margin-bottom:4px;opacity:.8}
+.sub{font-size:12px;opacity:.5;margin-bottom:16px}
+.matrix{width:100%;max-width:520px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:14px;background:linear-gradient(135deg,rgba(15,23,42,.95),rgba(88,28,135,.9),rgba(8,51,68,.95));border:1px solid rgba(34,211,238,.3);border-radius:12px;box-shadow:0 0 40px rgba(0,255,255,.25);position:relative;overflow:hidden}
+@media(max-width:480px){.matrix{grid-template-columns:repeat(2,1fr)}}
+.card{position:relative;background:rgba(0,0,0,.4);border:1px solid rgba(34,211,238,.2);border-radius:8px;padding:10px;overflow:hidden;transition:transform .3s}
+.card:hover{transform:scale(1.05);border-color:rgba(34,211,238,.6)}
+.card .glow{position:absolute;inset:0;opacity:.3;filter:blur(4px);pointer-events:none}
+.card .row{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;position:relative;z-index:1}
+.card .label{font-size:11px;font-weight:500;color:#cffafe;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .icon{font-size:18px}
+.card .barwrap{width:100%;background:rgba(31,41,55,.6);border-radius:999px;height:8px;overflow:hidden;position:relative;z-index:1}
+.card .bar{height:100%;border-radius:999px;position:relative;transition:width 1s ease-out}
+.card .bar::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.3),transparent);animation:shimmer 2s infinite}
+@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+.card .pct{font-size:11px;color:rgba(103,232,249,.8);margin-top:4px;text-align:center;position:relative;z-index:1}
+.corner{position:absolute;width:16px;height:16px;border-color:rgba(34,211,238,.6);border-style:solid;border-width:0}
+.corner.tl{top:0;left:0;border-top-width:2px;border-left-width:2px}
+.corner.tr{top:0;right:0;border-top-width:2px;border-right-width:2px}
+.corner.bl{bottom:0;left:0;border-bottom-width:2px;border-left-width:2px}
+.corner.br{bottom:0;right:0;border-bottom-width:2px;border-right-width:2px}
+.note{margin-top:16px;font-size:12px;opacity:.5;max-width:520px;text-align:center;line-height:1.5}
+</style></head><body>
+<h2>Athena's Emotion Matrix</h2>
+<div class="sub">Web UI component · 8 dimensions · live from store</div>
+<div class="matrix" id="mx">
+<div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+</div>
+<div class="note">This is the visual representation on the Athena web UI.<br>It uses 8 emotion dimensions — separate from the 140-variant galaxy backend.</div>
+<script>
+const dims=[
+ {id:'joy',label:'Joy',value:.6,color:'#FFD700',icon:'😊'},
+ {id:'curiosity',label:'Curiosity',value:.8,color:'#00BFFF',icon:'🤔'},
+ {id:'focus',label:'Focus',value:.7,color:'#9370DB',icon:'🎯'},
+ {id:'empathy',label:'Empathy',value:.5,color:'#FF69B4',icon:'💝'},
+ {id:'creativity',label:'Creativity',value:.4,color:'#FF6347',icon:'🎨'},
+ {id:'confidence',label:'Confidence',value:.6,color:'#32CD32',icon:'💪'},
+ {id:'analytical',label:'Analytical',value:.9,color:'#00CED1',icon:'🧠'},
+ {id:'supportive',label:'Supportive',value:.7,color:'#FFA500',icon:'🤝'},
+];
+const mx=document.getElementById('mx');
+dims.forEach(d=>{
+ const c=document.createElement('div');c.className='card';
+ c.innerHTML=`<div class="glow" style="background:linear-gradient(45deg,${d.color}20,transparent)"></div>
+ <div class="row"><span class="label">${d.label}</span><span class="icon">${d.icon}</span></div>
+ <div class="barwrap"><div class="bar" style="width:0%;background:${d.color};box-shadow:0 0 8px ${d.color}80"></div></div>
+ <div class="pct">${Math.round(d.value*100)}%</div>`;
+ mx.appendChild(c);
+ requestAnimationFrame(()=>requestAnimationFrame(()=>{c.querySelector('.bar').style.width=(d.value*100)+'%';}));
+});
+// Gentle live wobble
+setInterval(()=>{
+ document.querySelectorAll('.card').forEach((c,i)=>{
+  const nv=Math.max(.15,Math.min(.95,dims[i].value+(Math.random()-.5)*.08));
+  c.querySelector('.bar').style.width=(nv*100)+'%';
+  c.querySelector('.pct').textContent=Math.round(nv*100)+'%';
+ });
+},3000);
+</script></body></html>

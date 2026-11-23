@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Her Aura — Concept Preview</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#050508;color:#e8e8f0;font-family:system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px}
+h1{font-size:20px;margin-bottom:4px}
+.sub{font-size:13px;opacity:.55;margin-bottom:18px;text-align:center;max-width:600px;line-height:1.5}
+.stage{position:relative;width:100%;max-width:420px;aspect-ratio:3/4;border-radius:18px;overflow:hidden;border:1px solid rgba(120,120,180,.25);box-shadow:0 0 60px rgba(0,0,0,.8),inset 0 0 80px rgba(0,0,0,.5)}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%}
+.avatar{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);width:52%;aspect-ratio:3/4;z-index:2;pointer-events:none;filter:drop-shadow(0 0 30px rgba(255,255,255,.08))}
+.hud{position:absolute;bottom:12px;left:12px;right:12px;z-index:3;display:flex;justify-content:space-between;align-items:center}
+.ename{font-size:14px;font-weight:600;letter-spacing:.5px;text-shadow:0 2px 8px #000}
+.edesc{font-size:11px;opacity:.65;margin-top:2px;text-shadow:0 1px 4px #000}
+.eicon{font-size:28px;filter:drop-shadow(0 2px 6px #000)}
+.controls{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;justify-content:center;max-width:640px}
+.controls button{background:#1a1a2e;border:1px solid rgba(120,120,180,.3);color:#e8e8f0;padding:10px 16px;border-radius:999px;font-size:13px;cursor:pointer;transition:all .25s}
+.controls button:hover{transform:translateY(-2px);border-color:rgba(160,160,220,.6)}
+.controls button.active{background:#2a2a4e;border-color:#7c7cff;box-shadow:0 0 16px rgba(124,124,255,.35)}
+.note{margin-top:16px;font-size:12px;opacity:.45;max-width:600px;text-align:center;line-height:1.6}
+.speaking{position:absolute;top:12px;right:12px;z-index:3;font-size:11px;background:rgba(0,0,0,.5);border:1px solid rgba(124,255,124,.4);color:#7cff7c;padding:6px 12px;border-radius:999px;display:none;align-items:center;gap:6px}
+.speaking.on{display:flex}
+.speaking .dot{width:8px;height:8px;border-radius:50%;background:#7cff7c;animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.3}}
+</style></head><body>
+<h1>✨ Her Aura — Concept Preview</h1>
+<div class="sub">She stands inside a living emotion nebula. The particles around her <em>are</em> her current emotion from the 140-variant galaxy matrix — not a panel, not a background widget. Her atmosphere.</div>
+
+<div class="stage" id="stage">
+<canvas id="cv"></canvas>
+<!-- Stylized avatar silhouette (placeholder for the 3D model) -->
+<svg class="avatar" viewBox="0 0 120 160" fill="none">
+<defs>
+<radialGradient id="skin" cx="50%" cy="40%"><stop offset="0%" stop-color="#f5d5c0"/><stop offset="100%" stop-color="#d4a080"/></radialGradient>
+<linearGradient id="hair" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1a1a2e"/><stop offset="100%" stop-color="#0a0a12"/></linearGradient>
+<linearGradient id="dress" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2a2a4e"/><stop offset="100%" stop-color="#0f0f1e"/></linearGradient>
+</defs>
+<!-- Hair back -->
+<ellipse cx="60" cy="42" rx="26" ry="32" fill="url(#hair)"/>
+<!-- Neck -->
+<rect x="54" y="58" width="12" height="14" rx="4" fill="url(#skin)"/>
+<!-- Face -->
+<ellipse cx="60" cy="48" rx="16" ry="20" fill="url(#skin)"/>
+<!-- Hair front/sides -->
+<path d="M38 40 Q36 70 42 88 Q46 70 44 48 Z" fill="url(#hair)"/>
+<path d="M82 40 Q84 70 78 88 Q74 70 76 48 Z" fill="url(#hair)"/>
+<path d="M40 34 Q60 18 80 34 Q76 28 60 26 Q44 28 40 34 Z" fill="url(#hair)"/>
+<!-- Eyes (glowing cyan like Athena) -->
+<ellipse cx="53" cy="48" rx="3.2" ry="4" fill="#0ff" opacity=".9"><animate attributeName="opacity" values=".9;.6;.9" dur="3s" repeatCount="indefinite"/></ellipse>
+<ellipse cx="67" cy="48" rx="3.2" ry="4" fill="#0ff" opacity=".9"><animate attributeName="opacity" values=".9;.6;.9" dur="3s" repeatCount="indefinite"/></ellipse>
+<ellipse cx="53" cy="48" rx="1.2" ry="1.8" fill="#003"/>
+<ellipse cx="67" cy="48" rx="1.2" ry="1.8" fill="#003"/>
+<!-- Body/dress -->
+<path d="M44 74 Q60 70 76 74 L84 150 Q60 156 36 150 Z" fill="url(#dress)"/>
+<!-- Arms (relaxed, not T-pose) -->
+<path d="M44 78 Q38 100 40 120" stroke="url(#skin)" stroke-width="9" stroke-linecap="round"/>
+<path d="M76 78 Q82 100 80 120" stroke="url(#skin)" stroke-width="9" stroke-linecap="round"/>
+<!-- Chest emblem (owl) -->
+<circle cx="60" cy="92" r="7" fill="none" stroke="#7c7cff" stroke-width="1.5" opacity=".7"/>
+<circle cx="60" cy="92" r="2.5" fill="#7c7cff" opacity=".8"/>
+</svg>
+<div class="speaking" id="speakInd"><span class="dot"></span>SPEAKING</div>
+<div class="hud">
+<div><div class="ename" id="eName">Tranquility</div><div class="edesc" id="eDesc">calm · serene · 6-coord galaxy state</div></div>
+<div class="eicon" id="eIcon">🌊</div>
+</div>
+</div>
+
+<div class="controls" id="ctrls"></div>
+<div style="margin-top:12px"><button id="speakBtn" style="background:#1a2e1a;border:1px solid rgba(124,255,124,.3);color:#cfc;padding:10px 20px;border-radius:999px;cursor:pointer;font-size:13px">▶ Simulate her speaking</button></div>
+
+<div class="note">This is a 2D concept mockup. The real implementation would be a Three.js particle system behind the 3D avatar in the web UI, driven live by the galaxy emotion API.<br>Tap an emotion to see her atmosphere transform. Hit "speaking" to see the aura pulse with her voice.</div>
+
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+let W,H;function rs(){const r=cv.parentElement.getBoundingClientRect();W=cv.width=r.width*2;H=cv.height=r.height*2;}rs();addEventListener('resize',rs);
+
+const EMOTIONS={
+ tranquil:{name:'Tranquility',icon:'🌊',desc:'calm · serene · low turbulence',bg:['#060a14','#0a1626'],parts:{n:220,speed:.25,size:[1,3],colors:['#4a90d9','#6ab0ff','#2a5a8a','#8ac0ff'],behavior:'drift',glow:.5}},
+ joy:{name:'Radiant Joy',icon:'☀️',desc:'happy · luminous · high corona',bg:['#141006','#241a08'],parts:{n:320,speed:.5,size:[1,4],colors:['#ffd700','#ffec8b','#ffaa00','#fff5c0'],behavior:'rise',glow:1}},
+ anger:{name:'Rage',icon:'🔥',desc:'fury · high intensity + temp',bg:['#140606','#200a08'],parts:{n:380,speed:1.1,size:[1.5,5],colors:['#ff4400','#ff8800','#cc2200','#ffcc44'],behavior:'erupt',glow:1}},
+ sad:{name:'Melancholy',icon:'❄️',desc:'grief · cold · low luminosity',bg:['#080a14','#0c1220'],parts:{n:280,speed:.35,size:[1.5,4.5],colors:['#a0c8e8','#d0e8ff','#7a9cc0','#e8f4ff'],behavior:'fall',glow:.4}},
+ electric:{name:'Ion Storm',icon:'⚡',desc:'electric · high turbulence',bg:['#0a0814','#140e26'],parts:{n:300,speed:1.6,size:[1,2.5],colors:['#aa88ff','#ddccff','#6644cc','#ffffff'],behavior:'jitter',glow:.9}},
+ love:{name:'Devotion',icon:'💜',desc:'love · warm · luminous',bg:['#100814','#1c0e1e'],parts:{n:260,speed:.4,size:[1,3.5],colors:['#ff6ab0','#ff9ac8','#c04a8a','#ffd0e8'],behavior:'swirl',glow:.8}},
+ awe:{name:'Cosmic Awe',icon:'🌌',desc:'wonder · iridescent · vast',bg:['#080614','#100c22'],parts:{n:340,speed:.3,size:[1,5],colors:['#88ffcc','#cc88ff','#88ccff','#ffcc88'],behavior:'orbit',glow:.9}},
+};
+let cur='tranquil',parts=[],speaking=false,speakT=0;
+function spawn(){
+ const e=EMOTIONS[cur].parts;parts=[];
+ for(let i=0;i<e.n;i++)parts.push({x:Math.random()*W,y:Math.random()*H,vx:0,vy:0,s:e.size[0]+Math.random()*(e.size[1]-e.size[0]),c:e.colors[Math.floor(Math.random()*e.colors.length)],a:.3+Math.random()*.7,ph:Math.random()*6.28,sp:.5+Math.random()});
+}
+spawn();
+document.getElementById('ctrls').innerHTML=Object.keys(EMOTIONS).map(k=>`<button data-k="${k}" class="${k===cur?'active':''}">${EMOTIONS[k].icon} ${EMOTIONS[k].name}</button>`).join('');
+document.querySelectorAll('#ctrls button').forEach(b=>b.onclick=()=>{
+ cur=b.dataset.k;spawn();
+ document.querySelectorAll('#ctrls button').forEach(x=>x.classList.remove('active'));b.classList.add('active');
+ const e=EMOTIONS[cur];document.getElementById('eName').textContent=e.name;document.getElementById('eIcon').textContent=e.icon;document.getElementById('eDesc').textContent=e.desc;
+});
+document.getElementById('speakBtn').onclick=()=>{speaking=!speaking;document.getElementById('speakInd').classList.toggle('on',speaking);document.getElementById('speakBtn').textContent=speaking?'⏸ Stop speaking':'▶ Simulate her speaking';};
+
+let t=0;
+function frame(){
+ t+=.016;const E=EMOTIONS[cur],P=E.parts;
+ // bg gradient
+ const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,E.bg[0]);g.addColorStop(1,E.bg[1]);
+ ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+ const cx=W/2,cy=H*.52,avR=W*.32;
+ const pulse=speaking?1+Math.sin(t*9)*.18+Math.sin(t*23)*.07:1;
+ for(const p of parts){
+  p.ph+=.02*p.sp;
+  const dx=p.x-cx,dy=p.y-cy,d=Math.hypot(dx,dy)||1;
+  const ux=dx/d,uy=dy/d;
+  // keep particles in a torus/dome around avatar (not on top of her face)
+  const targetR=avR*(1.15+Math.sin(p.ph)*.25)*pulse;
+  if(d<targetR){p.x+=ux*2;p.y+=uy*2;}
+  switch(P.behavior){
+   case 'drift':p.x+=Math.sin(p.ph)*.6*P.speed;p.y+=Math.cos(p.ph*.7)*.4*P.speed-.2;break;
+   case 'rise':p.y-=P.speed*(1+p.sp);p.x+=Math.sin(p.ph+t*2)*.8;if(p.y<-10){p.y=H+10;p.x=Math.random()*W;}break;
+   case 'erupt':p.y-=P.speed*2*(1+p.sp);p.x+=(Math.random()-.5)*3;if(p.y<-10){p.y=H*.7+Math.random()*H*.3;p.x=cx+(Math.random()-.5)*W*.6;}break;
+   case 'fall':p.y+=P.speed*(1+p.sp*.5);p.x+=Math.sin(p.ph+t)*.9;if(p.y>H+10){p.y=-10;p.x=Math.random()*W;}break;
+   case 'jitter':p.x+=(Math.random()-.5)*8*P.speed;p.y+=(Math.random()-.5)*8*P.speed;break;
+   case 'swirl':{const a=Math.atan2(dy,dx)+.015*p.sp;const r=d+Math.sin(p.ph)*1.5;p.x=cx+Math.cos(a)*r;p.y=cy+Math.sin(a)*r*.9;break;}
+   case 'orbit':{const a=Math.atan2(dy,dx)+.008*(1+p.sp);p.x=cx+Math.cos(a)*d;p.y=cy+Math.sin(a)*d;break;}
+  }
+  // wrap
+  if(p.x<0)p.x=W;if(p.x>W)p.x=0;
+  const tw=.55+.45*Math.sin(t*3+p.ph*4);
+  const alpha=p.a*tw*(speaking?1.35:1);
+  ctx.globalAlpha=Math.min(alpha,1);
+  // glow
+  if(P.glow>.4){const gr=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.s*4*P.glow);gr.addColorStop(0,p.c);gr.addColorStop(1,'transparent');ctx.fillStyle=gr;ctx.beginPath();ctx.arc(p.x,p.y,p.s*4*P.glow,0,6.28);ctx.fill();}
+  ctx.globalAlpha=Math.min(alpha*1.2,1);ctx.fillStyle=p.c;
+  ctx.beginPath();ctx.arc(p.x,p.y,p.s,0,6.28);ctx.fill();
+ }
+ ctx.globalAlpha=1;
+ // vignette
+ const v=ctx.createRadialGradient(cx,cy,avR*.5,cx,cy,W*.75);v.addColorStop(0,'transparent');v.addColorStop(1,'rgba(0,0,0,.55)');ctx.fillStyle=v;ctx.fillRect(0,0,W,H);
+ requestAnimationFrame(frame);
+}
+frame();
+</script></body></html>
